@@ -9,6 +9,23 @@ Since DJ management software are either :
 
 I've decided to roll my own tool
 
+## Install
+
+````sh
+
+# get dependencies, any of :
+brew install ffmpeg
+apt install ffmpeg
+pacman -S ffmpeg
+
+# get it
+wget https://github.com/brainsandwich/gentrify/tree/master/gentrify.sh
+
+# use it
+gentrify.sh . --format=mp3 --samplerate=44100 --bitrate=320k --keepboth
+
+````
+
 ## Usage
 
 ````sh
