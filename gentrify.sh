@@ -74,6 +74,8 @@ export -f probe_file
 function process() {
     while read -r file
     do
+        # ------------------------------------ Probe file information
+
         filename=$(basename "$file")
         infoarr=($(probe_file "$file"))
         if ! [[ ${#infoarr[@]} -eq 3 ]]
@@ -83,48 +85,84 @@ function process() {
         fmt=${infoarr[0]}
         spr=${infoarr[1]}
         btr=${infoarr[2]}
+        convbtr=${TARGETBR}
 
-        if [ "$fmt" == "${TARGETFMT}" ] && [ "$spr" == "${TARGETSR}" ]
+        # ------------------------------------ Check if we need to convert
+
+        if [ "$fmt" == "${TARGETFMT}" ]
         then
-            printf "${COLOR_DISCARD}Skipping > '$filename' [$fmt, $spr, $btr]${COLOR_STANDARD}\n"
-            continue
+            if [ "$spr" == "${TARGETSR}" ]
+            then
+                printf "${COLOR_DISCARD}Skipping > '$filename' [$fmt, $spr, $btr]${COLOR_STANDARD}\n"
+                continue
+            fi
+
+            if [ $btr -le ${TARGETBR} ]
+            then
+                convbtr=$btr
+            fi
         fi
 
-        printf "${COLOR_PERFORM}Converting > '$filename' [$fmt, $spr, $btr] ...${COLOR_STANDARD}\n"
-
-        if [[ $DRYRUN = true ]]
-        then
-            continue
-        fi
-
+        printf "${COLOR_PERFORM}Converting '$filename' [$fmt, $spr, $btr] -> [$TARGETFMT, $TARGETSR, $convbtr] ...${COLOR_STANDARD}\n"
         directory=$(dirname "$file")
         targetfile="$directory/${filename%.*}.${TARGETFMT}"
         tempfile="$directory/${filename%.*}.temp.${TARGETFMT}"
+
+        # ------------------------------------ First cleanup last temp file
+
         if [[ -f "$tempfile" ]]
         then
-            rm "$tempfile"
+            printf "> Cleaning temp file '$tempfile'\n"
+            if [ $DRYRUN != true ]
+            then
+                rm "$tempfile"
+            fi
         fi
+
+        # ------------------------------------ Detect cover art
 
         coverart="$directory/cover.*"
         covercmds=""
         if [ -f "$coverart" ]; then
+            printf "> Found cover art '$coverart'\n"
             covercmds=-i "${coverart}" -map 0:0 -map 1:0 -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)"
         fi
 
-        if [[ $KEEPBOTH = true ]]
+        # ------------------------------------ Convert file
+
+        printf "> Converting '$file' to '$tempfile'\n"
+        if [ $DRYRUN != true ]
         then
             ffmpeg -nostdin -n -loglevel error \
                 -i "$file" \
                 $covercmds \
-                -map_metadata 0 -id3v2_version 3 -ar ${TARGETSR} -b:a ${TARGETBR} "$tempfile" \
-                    && mv "$tempfile" "$targetfile"
-        else
-            ffmpeg -nostdin -n -loglevel error \
-                -i "$file" \
-                $covercmds \
-                -map_metadata 0 -id3v2_version 3 -ar ${TARGETSR} -b:a ${TARGETBR} "$tempfile" \
-                    && mv "$tempfile" "$targetfile" \
-                    && rm "$file"
+                -map_metadata 0 -id3v2_version 3 -ar ${TARGETSR} -b:a ${convbtr} "$tempfile"
+        fi
+
+        # ------------------------------------ Rename temp converted file to 
+        # ------------------------------------ target name, only if conversion
+        # ------------------------------------ succeeded
+
+        if [[ -f "$tempfile" ]]
+        then
+            printf "> Renaming '$tempfile' to '$targetfile'\n"
+            if [ $DRYRUN != true ]
+            then
+                mv "$tempfile" "$targetfile"
+            fi
+        fi
+
+        # ------------------------------------ Remove source file if conversion
+        # ------------------------------------ succeeded and we don't keep both
+        # ------------------------------------ files
+
+        if [ $KEEPBOTH != true ] && [[ "$file" != "$targetfile" ]] && [ -f "$targetfile" ]
+        then
+            printf "> Removing '$file', '$targetfile' exists\n"
+            if [ $DRYRUN != true ]
+            then
+                rm "$file"
+            fi
         fi
     done
 }
